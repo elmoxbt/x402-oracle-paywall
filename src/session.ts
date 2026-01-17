@@ -1,7 +1,7 @@
 import { Connection } from '@solana/web3.js';
 import crypto from 'crypto';
 import { createPublicClient, http, type PublicClient, type Hex, type Chain } from 'viem';
-import { base, baseSepolia, mainnet, arbitrum, polygon } from 'viem/chains';
+import { base, baseSepolia, mainnet, arbitrum, polygon, bsc } from 'viem/chains';
 import { StorageManager } from './storage';
 import { KVStorage } from './storage-kv';
 import { AsyncStorageAdapter, IStorage } from './storage-async';
@@ -37,6 +37,7 @@ const EVM_CHAINS: Record<string, Chain> = {
   'ethereum': mainnet,
   'arbitrum': arbitrum,
   'polygon': polygon,
+  'bsc': bsc,
 };
 
 export class SessionManager {

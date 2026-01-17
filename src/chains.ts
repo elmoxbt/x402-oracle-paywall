@@ -156,6 +156,30 @@ export const CHAINS: Record<string, ChainConfig> = {
       },
     },
   },
+  'bsc': {
+    name: 'BNB Chain',
+    rpcUrl: 'https://bsc-dataseed.binance.org',
+    tokens: {
+      'USDC': {
+        mint: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+        symbol: 'USDC',
+        decimals: 18,
+        pricePerQuery: 100000000000000,
+      },
+      'USDT': {
+        mint: '0x55d398326f99059fF775485246999027B3197955',
+        symbol: 'USDT',
+        decimals: 18,
+        pricePerQuery: 100000000000000,
+      },
+      'BNB': {
+        mint: '0x0000000000000000000000000000000000000000',
+        symbol: 'BNB',
+        decimals: 18,
+        pricePerQuery: 200000000000000,
+      },
+    },
+  },
 };
 
 export function getChain(chainId: string): ChainConfig | null {
