@@ -141,17 +141,59 @@ Language:    TypeScript
 
 Credits are calculated as: `depositAmount / 0.0001` (in USD equivalent)
 
+---
+
+## Usage
+
+### Using Live Deployment
+
+**1. Get pricing info:**
+```bash
+curl https://pricemaxxer.vercel.app/api/pricing/solana-devnet
+```
+
+**2. Send tokens to recipient wallet (from response above)**
+
+**3. Create session:**
+```bash
+curl -X POST https://pricemaxxer.vercel.app/api/session \
+  -H "Content-Type: application/json" \
+  -d '{
+    "walletAddress": "YOUR_WALLET",
+    "chain": "solana-devnet",
+    "depositTxSignature": "TX_SIGNATURE",
+    "depositAmount": 100000,
+    "token": "USDC"
+  }'
+```
+
+**4. Query prices:**
+```bash
+curl https://pricemaxxer.vercel.app/api/price/btc-usd \
+  -H "X-Session-Id: YOUR_SESSION_ID"
+```
+
+### HFT Integration
+
+HFT tools can integrate with the REST API.
+
 ## API Endpoints
 
-- `GET /` - Service info with supported chains and tokens
-- `GET /api/chains` - List all supported chains
-- `GET /api/pricing/:chain` - Get pricing info for a chain
-- `POST /api/session` - Create session with deposit verification
-- `GET /api/session/:sessionId` - Check session status
-- `GET /api/wallet/:chain/:walletAddress` - Get session by wallet
-- `GET /api/price/:symbol` - Get price (requires X-Session-Id header)
-- `POST /api/prices` - Get multiple prices (requires X-Session-Id header)
-- `GET /health` - Health check
+**GET /** - Service info
+
+**GET /api/chains** - List supported chains
+
+**GET /api/pricing/:chain** - Pricing info for chain
+
+**POST /api/session** - Create session
+
+**GET /api/session/:sessionId** - Session status
+
+**GET /api/price/:symbol** - Get price (BTC/ETH/SOL)
+
+**POST /api/prices** - Batch prices
+
+**GET /health** - Health check
 
 ## Troubleshooting
 

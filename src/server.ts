@@ -8,6 +8,7 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+app.set('json spaces', 2);
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_CHAIN = process.env.DEFAULT_CHAIN || 'solana-devnet';
