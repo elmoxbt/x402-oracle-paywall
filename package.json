@@ -6,9 +6,10 @@
   "type": "commonjs",
   "scripts": {
     "dev": "ts-node src/server.ts",
-    "start": "ts-node src/server.ts",
+    "start": "node dist/server.js",
     "demo": "ts-node src/client-demo.ts",
     "build": "tsc",
+    "vercel-build": "tsc",
     "test": "echo \"No tests yet\" && exit 0"
   },
   "keywords": [
@@ -26,13 +27,17 @@
     "@pythnetwork/hermes-client": "^2.1.0",
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.98.4",
+    "@vercel/kv": "^1.0.1",
     "axios": "^1.7.9",
+    "better-sqlite3": "^11.7.0",
     "bs58": "^6.0.0",
     "dotenv": "^16.4.5",
     "express": "^5.2.1",
+    "viem": "^2.21.0",
     "x402-solana": "^0.1.5"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.5",
     "ts-node": "^10.9.2",

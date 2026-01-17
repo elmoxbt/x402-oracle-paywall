@@ -11,6 +11,9 @@ package-lock.json
 dist/
 *.tsbuildinfo
 
+# Database
+sessions.db
+
 # Logs
 logs/
 *.log

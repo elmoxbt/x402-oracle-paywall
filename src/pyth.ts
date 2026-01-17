@@ -1,6 +1,5 @@
 import { HermesClient } from '@pythnetwork/hermes-client';
 
-// Real Pyth price feed IDs for mainnet/devnet
 const PRICE_FEED_IDS = {
   'btc-usd': '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43',
   'eth-usd': '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
@@ -25,9 +24,6 @@ export class PythPriceService {
     this.connection = new HermesClient(hermesUrl);
   }
 
-  /**
-   * Get the latest price for a supported symbol
-   */
   async getPrice(symbol: SupportedSymbol): Promise<PriceData> {
     const feedId = PRICE_FEED_IDS[symbol];
 
@@ -65,18 +61,29 @@ export class PythPriceService {
     }
   }
 
-  /**
-   * Check if a symbol is supported
-   */
+  async getPrices(symbols: SupportedSymbol[]): Promise<PriceData[]> {
+    const feedIds = symbols.map(s => PRICE_FEED_IDS[s]).filter(Boolean);
+    if (feedIds.length === 0) return [];
+
+    const priceFeeds = await this.connection.getLatestPriceUpdates(feedIds);
+    if (!priceFeeds?.parsed) return [];
+
+    return priceFeeds.parsed.map((feed, i) => ({
+      symbol: symbols[i].toUpperCase(),
+      price: feed.price.price,
+      conf: feed.price.conf,
+      expo: feed.price.expo,
+      publishTime: Number(feed.price.publishTime),
+      timestamp: new Date().toISOString(),
+    }));
+  }
+
   isSupported(symbol: string): symbol is SupportedSymbol {
     return symbol in PRICE_FEED_IDS;
   }
 
-  /**
-   * Get all supported symbols
-   */
   getSupportedSymbols(): SupportedSymbol[] {
-    return ['btc-usd', 'eth-usd', 'sol-usd'];
+    return Object.keys(PRICE_FEED_IDS) as SupportedSymbol[];
   }
 }
 

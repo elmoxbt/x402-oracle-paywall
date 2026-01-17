@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
-import { Connection, PublicKey } from '@solana/web3.js';
 import dotenv from 'dotenv';
 import { pythService, SupportedSymbol } from './pyth';
+import { SessionManager } from './session';
+import { getSupportedChains } from './chains';
 
 dotenv.config();
 
@@ -9,223 +10,261 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const PRICE_PER_QUERY = parseInt(process.env.PRICE_PER_QUERY || '100000');
-const RECIPIENT_WALLET = process.env.RECIPIENT_WALLET;
-const USDC_MINT = process.env.USDC_MINT || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
-const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+const DEFAULT_CHAIN = process.env.DEFAULT_CHAIN || 'solana-devnet';
+const USE_KV = process.env.USE_KV === 'true';
 
-const connection = new Connection(SOLANA_RPC_URL, 'confirmed');
+const recipientWallets: Record<string, string> = {};
+for (const chain of getSupportedChains()) {
+  const envKey = `RECIPIENT_WALLET_${chain.toUpperCase().replace(/-/g, '_')}`;
+  const wallet = process.env[envKey] || process.env.RECIPIENT_WALLET;
+  if (wallet && wallet !== 'your_wallet_address_here') {
+    recipientWallets[chain] = wallet;
+  }
+}
 
-// Validate environment
-if (!RECIPIENT_WALLET || RECIPIENT_WALLET === 'your_wallet_address_here') {
-  console.error('ERROR: RECIPIENT_WALLET not set in .env file');
-  console.error('Please copy .env.example to .env and set your wallet address');
+if (Object.keys(recipientWallets).length === 0) {
+  console.error('ERROR: No recipient wallets configured. Set RECIPIENT_WALLET or chain-specific wallets.');
   process.exit(1);
 }
 
-interface PaymentHeader {
-  signature: string;
-  amount: number;
-  mint: string;
-  recipient: string;
-  timestamp: number;
-}
+const sessionManager = new SessionManager(recipientWallets, DEFAULT_CHAIN, USE_KV);
 
-/**
- * Parse x402 payment header from request
- */
-function parsePaymentHeader(req: Request): PaymentHeader | null {
-  const paymentHeader = req.headers['x-solana-payment'] as string;
+setInterval(() => sessionManager.cleanupExpiredSessions(), 60 * 1000);
 
-  if (!paymentHeader) {
-    return null;
-  }
-
-  try {
-    const parts = paymentHeader.split(',');
-    const headerData: any = {};
-
-    parts.forEach(part => {
-      const [key, value] = part.trim().split('=');
-      headerData[key] = value;
-    });
-
-    return {
-      signature: headerData.signature,
-      amount: parseInt(headerData.amount),
-      mint: headerData.mint,
-      recipient: headerData.recipient,
-      timestamp: parseInt(headerData.timestamp || '0'),
-    };
-  } catch (error) {
-    console.error('Failed to parse payment header:', error);
-    return null;
-  }
-}
-
-/**
- * Verify payment transaction on-chain
- */
-async function verifyPayment(payment: PaymentHeader): Promise<boolean> {
-  try {
-    // Verify basic payment details
-    if (payment.amount < PRICE_PER_QUERY) {
-      console.log('Payment amount too low:', payment.amount, 'required:', PRICE_PER_QUERY);
-      return false;
-    }
-
-    if (payment.mint !== USDC_MINT) {
-      console.log('Invalid mint:', payment.mint, 'expected:', USDC_MINT);
-      return false;
-    }
-
-    if (payment.recipient !== RECIPIENT_WALLET) {
-      console.log('Invalid recipient:', payment.recipient, 'expected:', RECIPIENT_WALLET);
-      return false;
-    }
-
-    // Verify transaction exists on-chain
-    const tx = await connection.getTransaction(payment.signature, {
-      commitment: 'confirmed',
-      maxSupportedTransactionVersion: 0,
-    });
-
-    if (!tx) {
-      console.log('Transaction not found:', payment.signature);
-      return false;
-    }
-
-    console.log('Payment verified:', payment.signature);
-    return true;
-  } catch (error) {
-    console.error('Payment verification error:', error);
-    return false;
-  }
-}
-
-/**
- * Create 402 Payment Required response
- */
-function create402Response(res: Response) {
-  res.status(402).json({
-    error: 'Payment Required',
-    message: 'This endpoint requires payment via x402 protocol',
-    payment: {
-      amount: PRICE_PER_QUERY,
-      mint: USDC_MINT,
-      recipient: RECIPIENT_WALLET,
-      network: 'devnet',
+app.get('/', (_req: Request, res: Response) => {
+  const pricing = sessionManager.getPricingInfo();
+  res.json({
+    name: 'x402 Paywalled Oracle',
+    description: 'Multi-chain HFT oracle with session-based payments',
+    endpoints: {
+      createSession: 'POST /api/session',
+      sessionStatus: 'GET /api/session/:sessionId',
+      walletSession: 'GET /api/wallet/:chain/:walletAddress',
+      price: 'GET /api/price/:symbol',
+      prices: 'POST /api/prices',
+      pricing: 'GET /api/pricing/:chain',
+      chains: 'GET /api/chains',
+      health: 'GET /health',
     },
+    supportedChains: sessionManager.getSupportedChains(),
+    supportedSymbols: pythService.getSupportedSymbols(),
   });
-}
+});
 
-/**
- * GET /api/price/:symbol
- * Fetch Pyth oracle price behind x402 paywall
- */
+app.get('/api/chains', (_req: Request, res: Response) => {
+  res.json({ chains: sessionManager.getSupportedChains() });
+});
+
+app.get('/api/pricing', (_req: Request, res: Response) => {
+  res.json(sessionManager.getPricingInfo(DEFAULT_CHAIN));
+});
+
+app.get('/api/pricing/:chain', (req: Request, res: Response) => {
+  res.json(sessionManager.getPricingInfo(req.params.chain));
+});
+
+app.post('/api/session', async (req: Request, res: Response) => {
+  const { walletAddress, chain, depositTxSignature, depositAmount, token } = req.body;
+  const chainId = chain || DEFAULT_CHAIN;
+
+  if (!walletAddress || !depositTxSignature || !depositAmount || !token) {
+    return res.status(400).json({
+      error: 'Missing required fields',
+      required: ['walletAddress', 'depositTxSignature', 'depositAmount', 'token'],
+      optional: ['chain'],
+      supportedChains: sessionManager.getSupportedChains(),
+      supportedTokens: sessionManager.getSupportedTokens(chainId).map(t => t.symbol),
+    });
+  }
+
+  const tokenConfig = sessionManager.getTokenConfig(chainId, token);
+  if (!tokenConfig) {
+    return res.status(400).json({
+      error: 'Unsupported token for chain',
+      chain: chainId,
+      supportedTokens: sessionManager.getSupportedTokens(chainId).map(t => t.symbol),
+    });
+  }
+
+  const result = await sessionManager.createSession(
+    walletAddress,
+    chainId,
+    depositTxSignature,
+    depositAmount,
+    token
+  );
+
+  if (!result) {
+    return res.status(400).json({
+      error: 'Session creation failed',
+      message: 'Could not verify deposit or amount too low',
+    });
+  }
+
+  if ('error' in result) {
+    return res.status(409).json({
+      error: result.error,
+    });
+  }
+
+  res.json({
+    success: true,
+    chain: chainId,
+    session: result,
+  });
+});
+
+app.get('/api/session/:sessionId', async (req: Request, res: Response) => {
+  const { sessionId } = req.params;
+  const status = await sessionManager.getSessionStatus(sessionId);
+
+  if (!status) {
+    return res.status(404).json({ error: 'Session not found or expired' });
+  }
+
+  res.json(status);
+});
+
+app.get('/api/wallet/:chain/:walletAddress', async (req: Request, res: Response) => {
+  const { chain, walletAddress } = req.params;
+  const session = await sessionManager.getSessionByWallet(walletAddress, chain);
+
+  if (!session) {
+    return res.json({ hasSession: false, chain });
+  }
+
+  const status = await sessionManager.getSessionStatus(session.id);
+  res.json({
+    hasSession: true,
+    chain,
+    sessionId: session.id,
+    remainingCredits: status?.remainingCredits,
+    expiresAt: status?.expiresAt,
+  });
+});
+
 app.get('/api/price/:symbol', async (req: Request, res: Response) => {
   const symbol = req.params.symbol.toLowerCase() as SupportedSymbol;
+  const sessionId = req.headers['x-session-id'] as string;
 
-  // Validate symbol
   if (!pythService.isSupported(symbol)) {
     return res.status(400).json({
       error: 'Invalid symbol',
-      message: 'Symbol must be one of: ' + pythService.getSupportedSymbols().join(', '),
+      supported: pythService.getSupportedSymbols(),
     });
   }
 
-  // Check for payment header
-  const payment = parsePaymentHeader(req);
-
-  if (!payment) {
-    console.log('No payment header found, returning 402');
-    return create402Response(res);
-  }
-
-  // Verify payment
-  const isValid = await verifyPayment(payment);
-
-  if (!isValid) {
-    console.log('Payment verification failed');
-    return res.status(403).json({
-      error: 'Payment Verification Failed',
-      message: 'The provided payment could not be verified',
+  if (!sessionId) {
+    return res.status(402).json({
+      error: 'Payment Required',
+      message: 'Create a session first by depositing tokens',
+      pricing: sessionManager.getPricingInfo(),
     });
   }
 
-  // Payment verified - fetch and return price
+  const session = await sessionManager.getSession(sessionId);
+  if (!session) {
+    return res.status(401).json({
+      error: 'Invalid or expired session',
+      message: 'Create a new session',
+    });
+  }
+
+  if (!(await sessionManager.useCredit(sessionId))) {
+    return res.status(402).json({
+      error: 'Insufficient credits',
+      message: 'Deposit more tokens to continue',
+      remainingCredits: 0,
+    });
+  }
+
   try {
-    console.log('Fetching price for:', symbol);
     const priceData = await pythService.getPrice(symbol);
+    const status = await sessionManager.getSessionStatus(sessionId);
 
     res.json({
       success: true,
       data: priceData,
-      payment: {
-        signature: payment.signature,
-        amount: payment.amount,
-        verified: true,
+      session: {
+        remainingCredits: status?.remainingCredits,
+        expiresAt: status?.expiresAt,
       },
     });
   } catch (error) {
-    console.error('Error fetching price:', error);
     res.status(500).json({
-      error: 'Internal Server Error',
-      message: error instanceof Error ? error.message : 'Failed to fetch price data',
+      error: 'Failed to fetch price',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
 
-/**
- * GET /health
- * Health check endpoint
- */
-app.get('/health', (req: Request, res: Response) => {
+app.post('/api/prices', async (req: Request, res: Response) => {
+  const sessionId = req.headers['x-session-id'] as string;
+  const { symbols } = req.body as { symbols?: string[] };
+
+  if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+    return res.status(400).json({ error: 'symbols array required' });
+  }
+
+  const validSymbols = symbols
+    .map(s => s.toLowerCase())
+    .filter(s => pythService.isSupported(s)) as SupportedSymbol[];
+
+  if (validSymbols.length === 0) {
+    return res.status(400).json({
+      error: 'No valid symbols',
+      supported: pythService.getSupportedSymbols(),
+    });
+  }
+
+  if (!sessionId) {
+    return res.status(402).json({
+      error: 'Payment Required',
+      pricing: sessionManager.getPricingInfo(),
+    });
+  }
+
+  const session = await sessionManager.getSession(sessionId);
+  if (!session) {
+    return res.status(401).json({ error: 'Invalid or expired session' });
+  }
+
+  if (!(await sessionManager.useCredit(sessionId))) {
+    return res.status(402).json({ error: 'Insufficient credits' });
+  }
+
+  try {
+    const prices = await pythService.getPrices(validSymbols);
+    const status = await sessionManager.getSessionStatus(sessionId);
+
+    res.json({
+      success: true,
+      data: prices,
+      session: { remainingCredits: status?.remainingCredits },
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
     config: {
-      pricePerQuery: PRICE_PER_QUERY,
-      usdcMint: USDC_MINT,
-      recipient: RECIPIENT_WALLET,
+      defaultChain: DEFAULT_CHAIN,
+      supportedChains: sessionManager.getSupportedChains(),
       supportedSymbols: pythService.getSupportedSymbols(),
     },
   });
 });
 
-/**
- * GET /
- * Root endpoint with API info
- */
-app.get('/', (req: Request, res: Response) => {
-  res.json({
-    name: 'x402 Paywalled Oracle',
-    description: 'Pyth oracle prices behind x402 paywall on Solana devnet',
-    endpoints: {
-      price: '/api/price/:symbol (btc-usd, eth-usd)',
-      health: '/health',
-    },
-    payment: {
-      protocol: 'x402',
-      amount: PRICE_PER_QUERY,
-      mint: USDC_MINT,
-      recipient: RECIPIENT_WALLET,
-      network: 'devnet',
-    },
-  });
-});
-
-// Start server
 app.listen(PORT, () => {
-  console.log('='.repeat(60));
-  console.log('x402 Paywalled Oracle Server');
-  console.log('='.repeat(60));
-  console.log('Server running on port:', PORT);
-  console.log('Price per query:', PRICE_PER_QUERY, 'micro-USDC');
-  console.log('Recipient wallet:', RECIPIENT_WALLET);
-  console.log('USDC mint:', USDC_MINT);
-  console.log('Supported symbols:', pythService.getSupportedSymbols().join(', '));
-  console.log('='.repeat(60));
-  console.log('Ready to accept x402 payments!');
-  console.log('='.repeat(60));
+  console.log('x402 Multi-Chain Oracle');
+  console.log('Port:', PORT);
+  console.log('Default Chain:', DEFAULT_CHAIN);
+  console.log('Chains:', sessionManager.getSupportedChains().join(', '));
+  console.log('Price Feeds:', pythService.getSupportedSymbols().join(', '));
 });
