@@ -321,8 +321,8 @@ export class SessionManager {
         symbol: t.symbol,
         mint: t.mint,
         decimals: t.decimals,
-        pricePerQuery: t.pricePerQuery,
-        pricePerQueryHuman: t.pricePerQuery / Math.pow(10, t.decimals),
+        pricePerQuery: t.pricePerQuery.toString(),
+        pricePerQueryUSD: 0.0001,
       })) : [],
     };
   }
