@@ -1,6 +1,4 @@
 import axios from 'axios';
-import { createPublicClient, http, type PublicClient } from 'viem';
-import { mainnet, base, arbitrum, polygon, bsc } from 'viem/chains';
 
 export interface DEXPriceData {
   inputToken: string;
@@ -9,14 +7,6 @@ export interface DEXPriceData {
   source: string;
   timestamp: number;
 }
-
-const CHAIN_TO_VIEM_CHAIN = {
-  'ethereum': mainnet,
-  'base': base,
-  'arbitrum': arbitrum,
-  'polygon': polygon,
-  'bsc': bsc,
-};
 
 const COMMON_TOKENS: Record<string, Record<string, string>> = {
   'ethereum': {
@@ -44,18 +34,6 @@ const COMMON_TOKENS: Record<string, Record<string, string>> = {
 };
 
 export class DEXService {
-  private clients: Map<string, PublicClient> = new Map();
-
-  constructor() {
-    for (const [chainName, viemChain] of Object.entries(CHAIN_TO_VIEM_CHAIN)) {
-      const client = createPublicClient({
-        chain: viemChain,
-        transport: http(),
-      });
-      this.clients.set(chainName, client);
-    }
-  }
-
   async getPrice(chain: string, inputToken: string, outputToken: string): Promise<DEXPriceData> {
     try {
       const response = await axios.get('https://api.1inch.dev/swap/v6.0/' + this.getChainId(chain) + '/quote', {
