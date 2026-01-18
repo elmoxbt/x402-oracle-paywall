@@ -2,7 +2,9 @@ import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { pythService, SupportedSymbol } from './pyth';
 import { SessionManager } from './session';
-import { getSupportedChains } from './chains';
+import { getSupportedChains, isSolanaChain, isEVMChain } from './chains';
+import { jupiterService } from './jupiter';
+import { dexService } from './dex';
 
 dotenv.config();
 
@@ -35,14 +37,15 @@ setInterval(() => sessionManager.cleanupExpiredSessions(), 60 * 1000);
 app.get('/', (_req: Request, res: Response) => {
   const pricing = sessionManager.getPricingInfo();
   res.json({
-    name: 'x402 Paywalled Oracle',
-    description: 'Multi-chain HFT oracle with session-based payments',
+    name: 'Pricemaxxer',
+    description: 'Multi-chain HFT oracle with session-based payments + DEX aggregation',
     endpoints: {
       createSession: 'POST /api/session',
       sessionStatus: 'GET /api/session/:sessionId',
       walletSession: 'GET /api/wallet/:chain/:walletAddress',
       price: 'GET /api/price/:symbol',
       prices: 'POST /api/prices',
+      dexPrice: 'GET /api/dex/:chain/:inputToken/:outputToken',
       pricing: 'GET /api/pricing/:chain',
       chains: 'GET /api/chains',
       health: 'GET /health',
@@ -246,6 +249,63 @@ app.post('/api/prices', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+app.get('/api/dex/:chain/:inputToken/:outputToken', async (req: Request, res: Response) => {
+  const { chain, inputToken, outputToken } = req.params;
+  const sessionId = req.headers['x-session-id'] as string;
+
+  if (!sessionId) {
+    return res.status(402).json({
+      error: 'Payment Required',
+      message: 'Create a session first by depositing tokens',
+      pricing: sessionManager.getPricingInfo(),
+    });
+  }
+
+  const session = await sessionManager.getSession(sessionId);
+  if (!session) {
+    return res.status(401).json({
+      error: 'Invalid or expired session',
+      message: 'Create a new session',
+    });
+  }
+
+  if (!(await sessionManager.useCredit(sessionId))) {
+    return res.status(402).json({
+      error: 'Insufficient credits',
+      message: 'Deposit more tokens to continue',
+      remainingCredits: 0,
+    });
+  }
+
+  try {
+    let priceData;
+
+    if (isSolanaChain(chain)) {
+      priceData = await jupiterService.getPriceBySymbol(inputToken, outputToken);
+    } else if (isEVMChain(chain)) {
+      priceData = await dexService.getPriceBySymbol(chain, inputToken, outputToken);
+    } else {
+      return res.status(400).json({ error: 'Unsupported chain' });
+    }
+
+    const status = await sessionManager.getSessionStatus(sessionId);
+
+    res.json({
+      success: true,
+      data: priceData,
+      session: {
+        remainingCredits: status?.remainingCredits,
+        expiresAt: status?.expiresAt,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch DEX price',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });

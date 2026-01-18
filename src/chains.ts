@@ -70,6 +70,12 @@ export const CHAINS: Record<string, ChainConfig> = {
         decimals: 6,
         pricePerQuery: 100,
       },
+      'USDT': {
+        mint: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
+        symbol: 'USDT',
+        decimals: 6,
+        pricePerQuery: 100,
+      },
       'ETH': {
         mint: '0x0000000000000000000000000000000000000000',
         symbol: 'ETH',
@@ -85,6 +91,12 @@ export const CHAINS: Record<string, ChainConfig> = {
       'USDC': {
         mint: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
         symbol: 'USDC',
+        decimals: 6,
+        pricePerQuery: 100,
+      },
+      'USDT': {
+        mint: '0x0000000000000000000000000000000000000000',
+        symbol: 'USDT',
         decimals: 6,
         pricePerQuery: 100,
       },

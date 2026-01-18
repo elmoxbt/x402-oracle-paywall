@@ -22,13 +22,41 @@ A multi-chain oracle API with session-based payments for high-frequency trading:
 - **Multi-chain support** → Solana (devnet/mainnet), Base, Ethereum, Arbitrum, Polygon, BSC
 - **Multi-token support** → USDC, USDT, SOL, ETH, MATIC, BNB
 
-Built for DePIN, RWA, and HFT infrastructure. Sessions persist for 24 hours with SQLite storage.
+Built for DePIN, RWA, and HFT infrastructure.
+
+---
+
+## Architectural Diagram
+
+```
+                                    PRICEMAXXER
+
+HFT Bot ──► REST API ──► Session Manager ──► SQLite / Vercel KV
+                │
+                ├──► Pyth Hermes (BTC, ETH, SOL oracle prices)
+                │
+                ├──► Jupiter (Solana DEX prices)
+                │
+                └──► 1inch (EVM DEX prices)
+
+Session Manager verifies deposits on:
+Solana ─ Base ─ Ethereum ─ Arbitrum ─ Polygon ─ BSC
+```
+
+**Flow:**
+1. Client deposits tokens on any supported chain
+2. Server verifies deposit and creates session
+3. Client queries prices using session ID
+4. Server fetches from Pyth or Jupiter/1inch
+5. Session credits decrement per query
 
 ---
 
 ## Features
 
 **Real-time Prices** - BTC/USD, ETH/USD, SOL/USD from Pyth Hermes
+
+**DEX Aggregation** - Arbitrary token pairs via Jupiter (Solana) and 1inch (EVM)
 
 **Session-Based** - Deposit once, query thousands of times
 
@@ -40,7 +68,7 @@ Built for DePIN, RWA, and HFT infrastructure. Sessions persist for 24 hours with
 
 **On-chain Verification** - Validates deposits on Solana and EVM chains
 
-**SQLite Persistence** - Sessions survive server restarts
+**Dual Storage** - SQLite locally, Vercel KV for serverless
 
 **Full TypeScript** - Type-safe server, oracle module, and demo client
 
@@ -59,6 +87,7 @@ Language:    TypeScript
 
 **Key Dependencies:**
 - `@pythnetwork/hermes-client` - Pyth price feeds
+- `@jup-ag/api` - Jupiter DEX aggregation
 - `@solana/web3.js` - Solana transaction verification
 - `viem` - EVM transaction verification
 - `better-sqlite3` - Local session persistence
@@ -91,15 +120,26 @@ curl -X POST https://pricemaxxer.vercel.app/api/session \
   }'
 ```
 
-**4. Query prices:**
+**4. Query oracle prices:**
 ```bash
 curl https://pricemaxxer.vercel.app/api/price/btc-usd \
   -H "X-Session-Id: YOUR_SESSION_ID"
 ```
 
+**5. Query DEX prices (arbitrary pairs):**
+```bash
+# Solana: Get SOL/USDT price
+curl https://pricemaxxer.vercel.app/api/dex/solana-mainnet/SOL/USDT \
+  -H "X-Session-Id: YOUR_SESSION_ID"
+
+# BSC: Get BNB/USDC price
+curl https://pricemaxxer.vercel.app/api/dex/bsc/BNB/USDC \
+  -H "X-Session-Id: YOUR_SESSION_ID"
+```
+
 ### HFT Integration
 
-HFT tools can integrate with the REST API.
+HFT tools can integrate with the REST API for both oracle and DEX price feeds.
 
 ## Troubleshooting
 
@@ -121,7 +161,7 @@ HFT tools can integrate with the REST API.
 
 This project demonstrates core infrastructure patterns for DePIN and RWA monetization. If you're building in oracles, paid APIs, or Solana payments, feel free to fork or reach out.
 
-Interested in similar work? DM on **X: [https://x.com/elmoxbt]** or open an issue.
+Interested in similar work? DM on **X: [@elmoxbt](https:///x.com/elmoxbt)** or open an issue.
 
 ---
 
