@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricemaxxer</title>
+  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #fff;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 2.5rem; margin-bottom: 0.5rem; color: #14F195; }
+    .subtitle { color: #888; margin-bottom: 2rem; }
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 { font-size: 1.2rem; margin-bottom: 1rem; color: #14F195; }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; margin-bottom: 0.5rem; color: #aaa; font-size: 0.9rem; }
+    input, select {
+      width: 100%;
+      padding: 0.75rem;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1rem;
+    }
+    input:focus, select:focus { outline: none; border-color: #14F195; }
+    button {
+      background: #14F195;
+      color: #000;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 0.5rem;
+    }
+    button:hover { background: #0ed080; }
+    button:disabled { background: #333; color: #666; cursor: not-allowed; }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid #14F195;
+      color: #14F195;
+    }
+    .btn-secondary:hover { background: rgba(20, 241, 149, 0.1); }
+    .status-bar {
+      display: flex;
+      gap: 2rem;
+      padding: 1rem;
+      background: #111;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    .status-item { text-align: center; flex: 1; }
+    .status-value { font-size: 1.5rem; font-weight: 700; color: #14F195; }
+    .status-label { font-size: 0.8rem; color: #666; }
+    .result {
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: monospace;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .error { color: #ff6b6b; }
+    .success { color: #14F195; }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .tab {
+      padding: 0.5rem 1rem;
+      background: transparent;
+      border: 1px solid #333;
+      color: #888;
+      width: auto;
+    }
+    .tab.active { background: #14F195; color: #000; border-color: #14F195; }
+    .wallet-info {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem;
+      background: #111;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    .wallet-address {
+      font-family: monospace;
+      font-size: 0.9rem;
+      color: #14F195;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .wallet-type { color: #888; font-size: 0.8rem; }
+    .hidden { display: none; }
+    .loading { opacity: 0.6; pointer-events: none; }
+    .deposit-info {
+      background: #111;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .deposit-info p { margin-bottom: 0.5rem; color: #888; }
+    .deposit-info .recipient {
+      font-family: monospace;
+      color: #14F195;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    @media (max-width: 600px) {
+      body { padding: 1rem; }
+      h1 { font-size: 1.8rem; }
+      .status-bar { gap: 0.5rem; }
+      .status-value { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Pricemaxxer</h1>
+    <p class="subtitle">Session-based HFT oracle with multi-chain support</p>
+
+    <div class="card">
+      <h2>Wallet Connection</h2>
+      <div id="walletNotConnected">
+        <div class="tabs">
+          <button class="tab active" onclick="setWalletType('solana')">Solana</button>
+          <button class="tab" onclick="setWalletType('evm')">EVM</button>
+        </div>
+        <button onclick="connectWallet()">Connect Wallet</button>
+      </div>
+      <div id="walletConnected" class="hidden">
+        <div class="wallet-info">
+          <div>
+            <div class="wallet-type" id="walletType">Solana</div>
+            <div class="wallet-address" id="walletAddress">-</div>
+          </div>
+          <button class="btn-secondary" style="width:auto" onclick="disconnectWallet()">Disconnect</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Session Status</h2>
+      <div class="status-bar">
+        <div class="status-item">
+          <div class="status-value" id="credits">-</div>
+          <div class="status-label">Credits</div>
+        </div>
+        <div class="status-item">
+          <div class="status-value" id="queries">-</div>
+          <div class="status-label">Queries Used</div>
+        </div>
+        <div class="status-item">
+          <div class="status-value" id="expires">-</div>
+          <div class="status-label">Expires</div>
+        </div>
+      </div>
+      <div id="noSession">
+        <p style="color:#888;margin-bottom:1rem">No active session. Connect wallet and deposit to create one.</p>
+      </div>
+    </div>
+
+    <div class="card" id="depositCard">
+      <h2>Create Session</h2>
+      <div class="form-group">
+        <label>Chain</label>
+        <select id="chain" onchange="updatePricing()">
+          <option value="solana-devnet">Solana Devnet</option>
+          <option value="solana-mainnet">Solana Mainnet</option>
+          <option value="base">Base</option>
+          <option value="ethereum">Ethereum</option>
+          <option value="arbitrum">Arbitrum</option>
+          <option value="polygon">Polygon</option>
+          <option value="bsc">BSC</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Token</label>
+        <select id="token">
+          <option value="USDC">USDC</option>
+          <option value="USDT">USDT</option>
+          <option value="SOL">SOL</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Amount (USD equivalent)</label>
+        <input type="number" id="depositAmount" placeholder="1.00" value="1" step="0.01" min="0.01">
+      </div>
+      <div class="deposit-info" id="depositInfo">
+        <p>Recipient wallet:</p>
+        <div class="recipient" id="recipientWallet">Loading...</div>
+      </div>
+      <button onclick="depositAndCreateSession()" id="depositBtn">Deposit & Create Session</button>
+    </div>
+
+    <div class="card" id="queryCard">
+      <h2>Query Prices</h2>
+      <div class="tabs" id="queryTabs">
+        <button class="tab active" onclick="setQueryType('oracle')">Oracle (Pyth)</button>
+        <button class="tab" onclick="setQueryType('dex')">DEX</button>
+      </div>
+      <div id="oracleQuery">
+        <div class="form-group">
+          <label>Symbol</label>
+          <select id="symbol">
+            <option value="btc-usd">BTC/USD</option>
+            <option value="eth-usd">ETH/USD</option>
+            <option value="sol-usd">SOL/USD</option>
+          </select>
+        </div>
+      </div>
+      <div id="dexQuery" class="hidden">
+        <div class="form-group">
+          <label>Chain</label>
+          <select id="dexChain">
+            <option value="solana-mainnet">Solana</option>
+            <option value="base">Base</option>
+            <option value="ethereum">Ethereum</option>
+            <option value="bsc">BSC</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Input Token</label>
+          <input type="text" id="inputToken" placeholder="SOL" value="SOL">
+        </div>
+        <div class="form-group">
+          <label>Output Token</label>
+          <input type="text" id="outputToken" placeholder="USDC" value="USDC">
+        </div>
+      </div>
+      <button onclick="queryPrice()">Query Price</button>
+    </div>
+
+    <div class="card">
+      <h2>Result</h2>
+      <div class="result" id="result">Connect wallet and create session to start querying</div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = window.location.origin;
+    let walletType = 'solana';
+    let queryType = 'oracle';
+    let connectedWallet = null;
+    let sessionId = null;
+    let pricingInfo = null;
+
+    function truncateAddress(addr) {
+      if (!addr || addr.length < 12) return addr;
+      if (window.innerWidth < 600) {
+        return addr.slice(0, 6) + '...' + addr.slice(-4);
+      }
+      return addr;
+    }
+
+    function updateAddressDisplays() {
+      if (connectedWallet) {
+        document.getElementById('walletAddress').textContent = truncateAddress(connectedWallet);
+      }
+      if (pricingInfo && pricingInfo.recipientWallet) {
+        document.getElementById('recipientWallet').textContent = pricingInfo.recipientWallet;
+      }
+    }
+
+    window.addEventListener('resize', updateAddressDisplays);
+
+    // Wallet type selection
+    function setWalletType(type) {
+      walletType = type;
+      document.querySelectorAll('#walletNotConnected .tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      updateChainOptions();
+    }
+
+    function updateChainOptions() {
+      const chainSelect = document.getElementById('chain');
+      chainSelect.innerHTML = '';
+      if (walletType === 'solana') {
+        chainSelect.innerHTML = `
+          <option value="solana-devnet">Solana Devnet</option>
+          <option value="solana-mainnet">Solana Mainnet</option>
+        `;
+      } else {
+        chainSelect.innerHTML = `
+          <option value="base">Base</option>
+          <option value="ethereum">Ethereum</option>
+          <option value="arbitrum">Arbitrum</option>
+          <option value="polygon">Polygon</option>
+          <option value="bsc">BSC</option>
+        `;
+      }
+      updatePricing();
+    }
+
+    // Connect wallet
+    async function connectWallet() {
+      try {
+        if (walletType === 'solana') {
+          await connectSolanaWallet();
+        } else {
+          await connectEVMWallet();
+        }
+      } catch (e) {
+        showResult({ error: e.message });
+      }
+    }
+
+    async function connectSolanaWallet() {
+      if (!window.solana || !window.solana.isPhantom) {
+        throw new Error('Phantom wallet not found. Please install Phantom.');
+      }
+      const resp = await window.solana.connect();
+      connectedWallet = resp.publicKey.toString();
+      onWalletConnected('Solana (Phantom)');
+    }
+
+    async function connectEVMWallet() {
+      if (!window.ethereum) {
+        throw new Error('MetaMask not found. Please install MetaMask.');
+      }
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      connectedWallet = accounts[0];
+      onWalletConnected('EVM (MetaMask)');
+    }
+
+    function onWalletConnected(type) {
+      document.getElementById('walletNotConnected').classList.add('hidden');
+      document.getElementById('walletConnected').classList.remove('hidden');
+      document.getElementById('walletType').textContent = type;
+      document.getElementById('walletAddress').textContent = truncateAddress(connectedWallet);
+      checkExistingSession();
+      updatePricing();
+    }
+
+    function disconnectWallet() {
+      connectedWallet = null;
+      sessionId = null;
+      document.getElementById('walletNotConnected').classList.remove('hidden');
+      document.getElementById('walletConnected').classList.add('hidden');
+      updateStatus(null);
+      document.getElementById('noSession').innerHTML = '<p style="color:#888;margin-bottom:1rem">No active session. Connect wallet and deposit to create one.</p>';
+    }
+
+    // Check for existing session
+    async function checkExistingSession() {
+      if (!connectedWallet) return;
+      const chain = document.getElementById('chain').value;
+      try {
+        const res = await fetch(`${API_URL}/api/wallet/${chain}/${connectedWallet}`);
+        const data = await res.json();
+        if (data.hasSession && data.sessionId) {
+          sessionId = data.sessionId;
+          updateStatus(data);
+          document.getElementById('noSession').innerHTML = `<p class="success">Active session found!</p>`;
+        }
+      } catch (e) {
+        console.error('Failed to check session:', e);
+      }
+    }
+
+    // Update pricing info
+    async function updatePricing() {
+      const chain = document.getElementById('chain').value;
+      try {
+        const res = await fetch(`${API_URL}/api/pricing/${chain}`);
+        pricingInfo = await res.json();
+        document.getElementById('recipientWallet').textContent = pricingInfo.recipientWallet || 'Not configured';
+        updateTokenOptions();
+        updateEstimatedCredits();
+      } catch (e) {
+        console.error('Failed to fetch pricing:', e);
+      }
+    }
+
+    function updateTokenOptions() {
+      if (!pricingInfo) return;
+      const tokenSelect = document.getElementById('token');
+      tokenSelect.innerHTML = '';
+      pricingInfo.supportedTokens.forEach(t => {
+        tokenSelect.innerHTML += `<option value="${t.symbol}">${t.symbol}</option>`;
+      });
+    }
+
+    function updateEstimatedCredits() {
+      const amount = parseFloat(document.getElementById('depositAmount').value) || 0;
+      const credits = Math.floor(amount / 0.0001);
+      document.getElementById('estimatedCredits').textContent = credits.toLocaleString();
+    }
+
+    document.getElementById('depositAmount').addEventListener('input', updateEstimatedCredits);
+
+    // Deposit and create session
+    async function depositAndCreateSession() {
+      if (!connectedWallet) {
+        return showResult({ error: 'Connect wallet first' });
+      }
+
+      const chain = document.getElementById('chain').value;
+      const token = document.getElementById('token').value;
+      const amount = parseFloat(document.getElementById('depositAmount').value);
+
+      if (!pricingInfo || !pricingInfo.recipientWallet) {
+        return showResult({ error: 'Recipient wallet not configured for this chain' });
+      }
+
+      const btn = document.getElementById('depositBtn');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+
+      try {
+        let txSignature;
+        let depositAmount;
+
+        if (walletType === 'solana') {
+          const result = await sendSolanaDeposit(chain, token, amount);
+          txSignature = result.signature;
+          depositAmount = result.amount;
+        } else {
+          const result = await sendEVMDeposit(chain, token, amount);
+          txSignature = result.signature;
+          depositAmount = result.amount;
+        }
+
+        showResult({ status: 'Deposit sent, creating session...', txSignature });
+
+        // Wait a bit for transaction to confirm
+        await new Promise(r => setTimeout(r, 2000));
+
+        // Create session
+        const res = await fetch(`${API_URL}/api/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chain,
+            walletAddress: connectedWallet,
+            depositTxSignature: txSignature,
+            depositAmount,
+            token,
+          }),
+        });
+
+        const data = await res.json();
+        showResult(data);
+
+        if (data.session?.sessionId) {
+          sessionId = data.session.sessionId;
+          totalCredits = data.session.totalCredits;
+          updateStatus({ remainingCredits: data.session.totalCredits, totalCredits: data.session.totalCredits, expiresAt: data.session.expiresAt });
+          document.getElementById('noSession').innerHTML = `<p class="success">Session created!</p>`;
+        }
+      } catch (e) {
+        showResult({ error: e.message });
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Deposit & Create Session';
+      }
+    }
+
+    async function sendSolanaDeposit(chain, token, usdAmount) {
+      const tokenInfo = pricingInfo.supportedTokens.find(t => t.symbol === token);
+      if (!tokenInfo) throw new Error('Token not found');
+
+      const decimals = tokenInfo.decimals;
+      const amount = Math.floor(usdAmount * Math.pow(10, decimals));
+
+      const { Connection, PublicKey, Transaction, SystemProgram, TransactionInstruction } = solanaWeb3;
+      const rpcUrl = chain === 'solana-devnet'
+        ? 'https://api.devnet.solana.com'
+        : 'https://api.mainnet-beta.solana.com';
+      const connection = new Connection(rpcUrl);
+
+      let transaction;
+      if (token === 'SOL') {
+        transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: new PublicKey(connectedWallet),
+            toPubkey: new PublicKey(pricingInfo.recipientWallet),
+            lamports: amount,
+          })
+        );
+      } else {
+        const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+        const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+        const mint = new PublicKey(tokenInfo.mint);
+
+        const getATA = (owner) => {
+          return PublicKey.findProgramAddressSync(
+            [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          )[0];
+        };
+
+        const fromAta = getATA(new PublicKey(connectedWallet));
+        const toAta = getATA(new PublicKey(pricingInfo.recipientWallet));
+
+        const data = new Uint8Array(9);
+        data[0] = 3;
+        const amountBigInt = BigInt(amount);
+        for (let i = 0; i < 8; i++) {
+          data[1 + i] = Number((amountBigInt >> BigInt(i * 8)) & BigInt(0xff));
+        }
+
+        transaction = new Transaction().add(
+          new TransactionInstruction({
+            keys: [
+              { pubkey: fromAta, isSigner: false, isWritable: true },
+              { pubkey: toAta, isSigner: false, isWritable: true },
+              { pubkey: new PublicKey(connectedWallet), isSigner: true, isWritable: false },
+            ],
+            programId: TOKEN_PROGRAM_ID,
+            data,
+          })
+        );
+      }
+
+      transaction.feePayer = new PublicKey(connectedWallet);
+      transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+      const signed = await window.solana.signTransaction(transaction);
+      const signature = await connection.sendRawTransaction(signed.serialize());
+      await connection.confirmTransaction(signature);
+
+      return { signature, amount };
+    }
+
+    async function sendEVMDeposit(chain, token, usdAmount) {
+      const tokenInfo = pricingInfo.supportedTokens.find(t => t.symbol === token);
+      if (!tokenInfo) throw new Error('Token not found');
+
+      const decimals = tokenInfo.decimals;
+      const amount = BigInt(Math.floor(usdAmount * Math.pow(10, decimals)));
+
+      const isNative = tokenInfo.mint === '0x0000000000000000000000000000000000000000';
+
+      let txHash;
+      if (isNative) {
+        // Native ETH/MATIC/BNB transfer
+        txHash = await window.ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: connectedWallet,
+            to: pricingInfo.recipientWallet,
+            value: '0x' + amount.toString(16),
+          }],
+        });
+      } else {
+        // ERC20 transfer
+        const transferData = '0xa9059cbb' +
+          pricingInfo.recipientWallet.slice(2).padStart(64, '0') +
+          amount.toString(16).padStart(64, '0');
+
+        txHash = await window.ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: connectedWallet,
+            to: tokenInfo.mint,
+            data: transferData,
+          }],
+        });
+      }
+
+      // Wait for confirmation
+      await new Promise(r => setTimeout(r, 3000));
+
+      return { signature: txHash, amount: Number(amount) };
+    }
+
+    // Query type selection
+    function setQueryType(type) {
+      queryType = type;
+      document.querySelectorAll('#oracleQuery, #dexQuery').forEach(el => {
+        el.classList.toggle('hidden', el.id !== type + 'Query');
+      });
+      document.querySelectorAll('#queryTabs .tab').forEach((t, i) => {
+        t.classList.toggle('active', (type === 'oracle' && i === 0) || (type === 'dex' && i === 1));
+      });
+    }
+
+    // Query price
+    async function queryPrice() {
+      if (!sessionId) {
+        return showResult({ error: 'Create a session first' });
+      }
+
+      try {
+        let url;
+        if (queryType === 'oracle') {
+          const symbol = document.getElementById('symbol').value;
+          url = `${API_URL}/api/price/${symbol}`;
+        } else {
+          const chain = document.getElementById('dexChain').value;
+          const input = document.getElementById('inputToken').value;
+          const output = document.getElementById('outputToken').value;
+          url = `${API_URL}/api/dex/${chain}/${input}/${output}`;
+        }
+
+        const res = await fetch(url, {
+          headers: { 'X-Session-Id': sessionId },
+        });
+        const data = await res.json();
+        showResult(data);
+        if (data.session) {
+          updateStatus(data.session);
+        }
+      } catch (e) {
+        showResult({ error: e.message });
+      }
+    }
+
+    function showResult(data) {
+      const formatted = formatResultForDisplay(data);
+      document.getElementById('result').textContent = JSON.stringify(formatted, null, 2);
+    }
+
+    function formatResultForDisplay(data) {
+      if (!data || typeof data !== 'object') return data;
+
+      const result = { ...data };
+
+      // Format price data
+      if (result.data) {
+        const d = { ...result.data };
+
+        // Format Pyth oracle price (price * 10^expo)
+        if (d.price && d.expo !== undefined) {
+          const rawPrice = parseFloat(d.price);
+          const expo = parseInt(d.expo);
+          const actualPrice = rawPrice * Math.pow(10, expo);
+          d.price = '$' + actualPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          delete d.expo;
+          delete d.conf;
+        }
+
+        // Format DEX price
+        if (d.price && !d.expo) {
+          d.price = '$' + d.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+        }
+
+        // Remove mint addresses
+        delete d.inputMint;
+        delete d.outputMint;
+
+        // Format timestamp
+        if (d.timestamp) {
+          d.time = new Date(d.timestamp).toLocaleTimeString();
+          delete d.timestamp;
+        }
+        if (d.publishTime) {
+          d.publishedAt = d.publishTime ? new Date(d.publishTime * 1000).toLocaleTimeString() : 'N/A';
+          delete d.publishTime;
+        }
+
+        result.data = d;
+      }
+
+      // Remove session info from display
+      delete result.session;
+
+      return result;
+    }
+
+    let totalCredits = null;
+
+    function updateStatus(data) {
+      if (!data) {
+        document.getElementById('credits').textContent = '-';
+        document.getElementById('queries').textContent = '-';
+        document.getElementById('expires').textContent = '-';
+        return;
+      }
+
+      if (data.totalCredits) totalCredits = data.totalCredits;
+
+      const remaining = data.remainingCredits ?? data.totalCredits;
+      document.getElementById('credits').textContent = remaining?.toLocaleString() ?? '-';
+      const queriesUsed = data.queriesUsed ?? (totalCredits ? totalCredits - remaining : '-');
+      document.getElementById('queries').textContent = typeof queriesUsed === 'number' ? queriesUsed.toLocaleString() : '-';
+      if (data.expiresAt) {
+        const expires = new Date(data.expiresAt);
+        const hours = Math.round((expires - Date.now()) / (1000 * 60 * 60));
+        document.getElementById('expires').textContent = hours > 0 ? `${hours}h` : 'Expired';
+      } else {
+        document.getElementById('expires').textContent = '-';
+      }
+    }
+
+    // Initialize
+    updatePricing();
+  </script>
+</body>
+</html>

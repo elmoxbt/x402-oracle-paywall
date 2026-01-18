@@ -290,6 +290,7 @@ export class SessionManager {
   async getSessionStatus(sessionId: string): Promise<{
     valid: boolean;
     remainingCredits: number;
+    totalCredits: number;
     expiresAt: number;
     queriesUsed: number;
   } | null> {
@@ -299,6 +300,7 @@ export class SessionManager {
     return {
       valid: session.remainingCredits > 0,
       remainingCredits: session.remainingCredits,
+      totalCredits: session.totalCredits,
       expiresAt: session.expiresAt,
       queriesUsed: session.totalCredits - session.remainingCredits,
     };

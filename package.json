@@ -10,7 +10,7 @@
     "demo": "ts-node src/client-demo.ts",
     "build": "tsc",
     "vercel-build": "tsc",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "jest"
   },
   "keywords": [
     "solana",
@@ -42,7 +42,10 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/express": "^5.0.0",
+    "@types/jest": "^29.5.12",
     "@types/node": "^22.10.5",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2"
   }

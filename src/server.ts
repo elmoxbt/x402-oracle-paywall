@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import path from 'path';
 import dotenv from 'dotenv';
 import { pythService, SupportedSymbol } from './pyth';
 import { SessionManager } from './session';
@@ -11,6 +12,7 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 app.set('json spaces', 2);
+app.use(express.static(path.join(__dirname, '../public')));
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_CHAIN = process.env.DEFAULT_CHAIN || 'solana-devnet';
@@ -191,6 +193,8 @@ app.get('/api/price/:symbol', async (req: Request, res: Response) => {
       data: priceData,
       session: {
         remainingCredits: status?.remainingCredits,
+        queriesUsed: status?.queriesUsed,
+        totalCredits: status?.totalCredits,
         expiresAt: status?.expiresAt,
       },
     });
@@ -299,6 +303,8 @@ app.get('/api/dex/:chain/:inputToken/:outputToken', async (req: Request, res: Re
       data: priceData,
       session: {
         remainingCredits: status?.remainingCredits,
+        queriesUsed: status?.queriesUsed,
+        totalCredits: status?.totalCredits,
         expiresAt: status?.expiresAt,
       },
     });
