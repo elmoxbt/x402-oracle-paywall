@@ -32,6 +32,7 @@ Thumbs.db
 
 # Keypairs (NEVER commit these!)
 *.json
+!vercel.json
 !package.json
 !package-lock.json
 !tsconfig.json
