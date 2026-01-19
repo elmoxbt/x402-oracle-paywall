@@ -29,7 +29,9 @@ for (const chain of getSupportedChains()) {
 
 if (Object.keys(recipientWallets).length === 0) {
   console.error('ERROR: No recipient wallets configured. Set RECIPIENT_WALLET or chain-specific wallets.');
-  process.exit(1);
+  if (process.env.NODE_ENV !== 'production') {
+    process.exit(1);
+  }
 }
 
 const sessionManager = new SessionManager(recipientWallets, DEFAULT_CHAIN, USE_KV);
@@ -37,7 +39,6 @@ const sessionManager = new SessionManager(recipientWallets, DEFAULT_CHAIN, USE_K
 setInterval(() => sessionManager.cleanupExpiredSessions(), 60 * 1000);
 
 app.get('/', (_req: Request, res: Response) => {
-  const pricing = sessionManager.getPricingInfo();
   res.json({
     name: 'Pricemaxxer',
     description: 'Multi-chain HFT oracle with session-based payments + DEX aggregation',
@@ -328,10 +329,16 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log('x402 Multi-Chain Oracle');
-  console.log('Port:', PORT);
-  console.log('Default Chain:', DEFAULT_CHAIN);
-  console.log('Chains:', sessionManager.getSupportedChains().join(', '));
-  console.log('Price Feeds:', pythService.getSupportedSymbols().join(', '));
-});
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log('x402 Multi-Chain Oracle');
+    console.log('Port:', PORT);
+    console.log('Default Chain:', DEFAULT_CHAIN);
+    console.log('Chains:', sessionManager.getSupportedChains().join(', '));
+    console.log('Price Feeds:', pythService.getSupportedSymbols().join(', '));
+  });
+}
+
+// For Vercel serverless
+export default app;
