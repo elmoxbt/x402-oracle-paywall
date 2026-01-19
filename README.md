@@ -70,7 +70,9 @@ Solana ─ Base ─ Ethereum ─ Arbitrum ─ Polygon ─ BSC
 
 **Dual Storage** - SQLite locally, Vercel KV for serverless
 
-**Full TypeScript** - Type-safe server, oracle module, and demo client
+**Web Frontend** - Connect wallet, create sessions, query prices from browser
+
+**Full TypeScript** - Type-safe server, oracle module, and test suite
 
 ---
 
@@ -93,6 +95,7 @@ Language:    TypeScript
 - `better-sqlite3` - Local session persistence
 - `@vercel/kv` - Serverless session persistence
 - `express` - HTTP server
+- `jest` - Testing framework
 
 ---
 
@@ -140,6 +143,12 @@ curl https://pricemaxxer.vercel.app/api/dex/bsc/BNB/USDC \
 ### HFT Integration
 
 HFT tools can integrate with the REST API for both oracle and DEX price feeds.
+
+### Running Tests
+
+```bash
+npm test
+```
 
 ## Troubleshooting
 
