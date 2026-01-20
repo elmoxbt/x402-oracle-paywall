@@ -12,7 +12,10 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 app.set('json spaces', 2);
-app.use(express.static(path.join(__dirname, '../public')));
+
+// Serve static files from public directory
+const publicPath = path.join(__dirname, '../public');
+app.use(express.static(publicPath));
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_CHAIN = process.env.DEFAULT_CHAIN || 'solana-devnet';
@@ -36,9 +39,16 @@ if (Object.keys(recipientWallets).length === 0) {
 
 const sessionManager = new SessionManager(recipientWallets, DEFAULT_CHAIN, USE_KV);
 
-setInterval(() => sessionManager.cleanupExpiredSessions(), 60 * 1000);
+// Cleanup only runs in local development (not in serverless)
+if (process.env.NODE_ENV !== 'production') {
+  setInterval(() => sessionManager.cleanupExpiredSessions(), 60 * 1000);
+}
 
 app.get('/', (_req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+app.get('/api', (_req: Request, res: Response) => {
   res.json({
     name: 'Pricemaxxer',
     description: 'Multi-chain HFT oracle with session-based payments + DEX aggregation',
